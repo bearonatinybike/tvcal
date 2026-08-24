@@ -180,6 +180,13 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .detail dt{font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.05em;text-transform:uppercase}
 .detail dd{margin:0}
 .detail .out{display:block;margin-top:16px;font-size:12px;color:var(--us)}
+.detail .ep-list{list-style:none;margin:14px 0 0;padding-top:10px;border-top:1px solid var(--edge);max-height:220px;overflow-y:auto}
+.detail .ep-list li{border-bottom:1px solid var(--edge-soft);font-size:12px}
+.detail .ep-list li:last-child{border-bottom:0}
+.detail .ep-list li,.detail .ep-list li>a{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:6px 0;color:inherit;text-decoration:none}
+.detail .ep-list .code{font-family:var(--mono);color:var(--dim);flex-shrink:0}
+.detail .ep-list .name{color:var(--text);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.detail .ep-list li>a:hover .name{color:var(--us)}
 
 .toast{
   position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:40;
@@ -251,6 +258,42 @@ function epCode(e){
   return (e.season && e.number) ? `S${String(e.season).padStart(2,"0")}E${String(e.number).padStart(2,"0")}` : "Special";
 }
 
+/* Same show, same calendar day, more than one episode - e.g. a whole season
+   dropping at once - collapse into a single chip with a count and range
+   rather than a wall of near-identical entries. */
+function groupDayEpisodes(list){
+  const byShow = {};
+  for (const e of list) (byShow[e.show_id] ||= []).push(e);
+  const out = [];
+  for (const showId in byShow){
+    const eps = byShow[showId].slice().sort((a,b) =>
+      (a.season||0) - (b.season||0) || (a.number||0) - (b.number||0));
+    out.push(eps.length === 1 ? eps[0] : makeGroup(eps));
+  }
+  return out;
+}
+
+function makeGroup(eps){
+  const first = eps[0];
+  return {
+    group: true, episodes: eps,
+    show: first.show, show_id: first.show_id, network: first.network,
+    country: first.country, shift_days: first.shift_days,
+    display_date: first.display_date, airdate: first.airdate,
+  };
+}
+
+function epRangeLabel(g){
+  const eps = g.episodes;
+  const seasons = new Set(eps.map(e => e.season));
+  const nums = eps.map(e => e.number).filter(n => n != null);
+  if (seasons.size === 1 && nums.length === eps.length){
+    const s = eps[0].season, lo = Math.min(...nums), hi = Math.max(...nums);
+    return `S${String(s).padStart(2,"0")}E${String(lo).padStart(2,"0")}–E${String(hi).padStart(2,"0")} · ${eps.length} episodes`;
+  }
+  return `${eps.length} episodes`;
+}
+
 function gridRange(){
   const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
   const start = new Date(first);
@@ -275,14 +318,14 @@ function chip(e){
   b.innerHTML = `<span class="title"></span><span class="meta"></span>`;
   b.querySelector(".title").textContent = e.show;
   const meta = b.querySelector(".meta");
-  meta.append(epCode(e));
+  meta.append(e.group ? epRangeLabel(e) : epCode(e));
   if (e.shift_days > 0){
     const badge = document.createElement("span");
     badge.className = "shift-badge";
     badge.textContent = `+${e.shift_days}`;
     meta.append(badge);
   }
-  b.onclick = () => showDetail(e);
+  b.onclick = () => e.group ? showGroupDetail(e) : showDetail(e);
   return b;
 }
 
@@ -308,7 +351,7 @@ function render(start){
     num.className = "daynum";
     num.textContent = day.getDate() === 1 ? `${day.getDate()} ${MONTHS[day.getMonth()].slice(0,3)}` : day.getDate();
     cell.append(num);
-    for (const e of (byDay[key] || [])) cell.append(chip(e));
+    for (const e of groupDayEpisodes(byDay[key] || [])) cell.append(chip(e));
     grid.append(cell);
   }
 
@@ -323,7 +366,7 @@ function render(start){
     label.textContent = key === todayISO ? "Today" :
       `${DAYS[(d.getDay()+6)%7]} ${d.getDate()} ${MONTHS[d.getMonth()].slice(0,3)}`;
     wrap.append(label);
-    for (const e of byDay[key]) wrap.append(chip(e));
+    for (const e of groupDayEpisodes(byDay[key])) wrap.append(chip(e));
     agenda.append(wrap);
   }
 
@@ -372,6 +415,46 @@ function showDetail(e){
     a.className = "out"; a.href = e.url; a.target = "_blank"; a.rel = "noopener";
     a.textContent = "Open on TVmaze";
     box.append(a);
+  }
+  document.body.append(scrim, box);
+}
+
+function showGroupDetail(g){
+  closeOverlays();
+  const scrim = document.createElement("div");
+  scrim.className = "scrim";
+  scrim.onclick = closeOverlays;
+  const box = document.createElement("div");
+  box.className = "detail";
+  const aired = new Date(g.airdate + "T00:00:00");
+  const airedLabel = `${DAYS[(aired.getDay()+6)%7]} ${aired.getDate()} ${MONTHS[aired.getMonth()].slice(0,3)} ${aired.getFullYear()}`;
+  box.innerHTML = `
+    <h3></h3>
+    <div class="ep"></div>
+    <dl>
+      <dt>Aired</dt><dd>${airedLabel}${g.episodes[0].airtime ? " at " + g.episodes[0].airtime : ""}</dd>
+      <dt>On calendar</dt><dd>${g.shift_days ? `${g.display_date} (+${g.shift_days} day)` : "same day"}</dd>
+      <dt>Network</dt><dd>${g.network || "unknown"}${g.country ? " (" + g.country + ")" : ""}</dd>
+    </dl>
+    <ul class="ep-list"></ul>`;
+  box.querySelector("h3").textContent = g.show;
+  box.querySelector(".ep").textContent = epRangeLabel(g);
+  const list = box.querySelector(".ep-list");
+  for (const e of g.episodes){
+    const li = document.createElement("li");
+    const code = document.createElement("span");
+    code.className = "code"; code.textContent = epCode(e);
+    const name = document.createElement("span");
+    name.className = "name"; name.textContent = e.episode || "";
+    if (e.url){
+      const a = document.createElement("a");
+      a.href = e.url; a.target = "_blank"; a.rel = "noopener";
+      a.append(code, name);
+      li.append(a);
+    } else {
+      li.append(code, name);
+    }
+    list.append(li);
   }
   document.body.append(scrim, box);
 }
