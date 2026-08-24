@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS shows (
     shift_days  INTEGER NOT NULL DEFAULT 0, -- days to push the calendar entry forward
     added_at    TEXT NOT NULL,
     refreshed_at TEXT,
-    archived    INTEGER NOT NULL DEFAULT 0  -- off the calendar and out of the refresh sweep, but kept
+    archived    INTEGER NOT NULL DEFAULT 0, -- off the calendar and out of the refresh sweep, but kept
+    is_broadcast INTEGER NOT NULL DEFAULT 0 -- country came from network, not webChannel - see default_shift()
 );
 
 CREATE TABLE IF NOT EXISTS episodes (
@@ -79,6 +80,8 @@ def init_db():
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(shows)")}
         if "archived" not in cols:
             conn.execute("ALTER TABLE shows ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
+        if "is_broadcast" not in cols:
+            conn.execute("ALTER TABLE shows ADD COLUMN is_broadcast INTEGER NOT NULL DEFAULT 0")
         ep_cols = {r["name"] for r in conn.execute("PRAGMA table_info(episodes)")}
         if "summary" not in ep_cols:
             conn.execute("ALTER TABLE episodes ADD COLUMN summary TEXT")
@@ -101,11 +104,24 @@ def _https(url):
     return url.replace("http://", "https://") if url else None
 
 
+def network_country_code(show):
+    """Country code from TVmaze's network field specifically, or None.
+
+    Distinct from show_country() below, which also falls back to webChannel
+    for display purposes. This one is the real broadcast/streaming signal:
+    a webChannel-sourced country (Hulu, Peacock) doesn't mean the show airs
+    on a single evening schedule the way a network-sourced one does.
+    """
+    return (show.get("network") or {}).get("country", {}).get("code")
+
+
 def show_country(show):
     """Network country if broadcast, web channel country if streaming, else None.
 
     Global streamers (Netflix, Prime) report no country at all, which is the
-    honest answer - there is no single air date to offset from.
+    honest answer - there is no single air date to offset from. This is for
+    display only - see network_country_code() for the broadcast/streaming
+    distinction that actually drives the shift default and calendar colour.
     """
     for key in ("network", "webChannel"):
         block = show.get(key) or {}
@@ -129,6 +145,7 @@ def summarise_show(show):
         "name": show.get("name"),
         "network": show_network(show),
         "country": show_country(show),
+        "is_broadcast": bool(network_country_code(show)),
         "status": show.get("status"),
         "premiered": show.get("premiered"),
         "image": _https((show.get("image") or {}).get("medium")),
@@ -146,8 +163,7 @@ def default_shift(show):
     streamers reporting no country at all (Netflix, Prime) get no shift
     either, on the assumption they drop simultaneously at UK midnight.
     """
-    network = (show.get("network") or {}).get("country") or {}
-    return 1 if network.get("code") == "US" else 0
+    return 1 if network_country_code(show) == "US" else 0
 
 
 def tvmaze_search_id(name):
@@ -178,12 +194,13 @@ def sync_show(show_id, conn, set_shift=None):
         shift = default_shift(data)
 
     conn.execute(
-        """INSERT INTO shows (id, name, network, country, status, premiered, image, url,
-                              shift_days, added_at, refreshed_at)
-           VALUES (:id, :name, :network, :country, :status, :premiered, :image, :url,
-                   :shift, :now, :now)
+        """INSERT INTO shows (id, name, network, country, is_broadcast, status, premiered,
+                              image, url, shift_days, added_at, refreshed_at)
+           VALUES (:id, :name, :network, :country, :is_broadcast, :status, :premiered,
+                   :image, :url, :shift, :now, :now)
            ON CONFLICT(id) DO UPDATE SET
                name = excluded.name, network = excluded.network, country = excluded.country,
+               is_broadcast = excluded.is_broadcast,
                status = excluded.status, premiered = excluded.premiered,
                image = excluded.image, url = excluded.url, refreshed_at = excluded.refreshed_at""",
         {**meta, "shift": shift, "now": now},
@@ -383,7 +400,7 @@ def calendar_rows(start, end):
         rows = conn.execute(
             """SELECT e.id, e.season, e.number, e.name AS episode, e.airdate, e.airtime,
                       e.runtime, e.url, e.summary,
-                      s.id AS show_id, s.name AS show, s.network, s.country,
+                      s.id AS show_id, s.name AS show, s.network, s.country, s.is_broadcast,
                       s.shift_days, s.image,
                       date(e.airdate, '+' || s.shift_days || ' days') AS display_date
                FROM episodes e JOIN shows s ON s.id = e.show_id

@@ -10,7 +10,7 @@
 :root{
   --ink:#12141d; --panel:#1a1e2a; --edge:#2a3040; --edge-soft:#222736;
   --text:#e7e9f0; --dim:#8b93a8; --faint:#5c6479;
-  --uk:#f0b429; --us:#56b6d8; --unknown:#e0544a; --gb-broadcast:#4caf6d;
+  --uk:#f0b429; --us:#56b6d8; --streaming:#e0544a; --gb-broadcast:#4caf6d;
   --mono:ui-monospace,"SF Mono","Cascadia Mono","JetBrains Mono",Menlo,Consolas,monospace;
   --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   --r:5px;
@@ -57,7 +57,7 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
   font-family:var(--mono);font-size:12.5px;color:var(--faint);letter-spacing:.05em;
 }
 .key{display:flex;align-items:center;gap:7px}
-.swatch{width:9px;height:9px;border-radius:2px;background:var(--unknown)}
+.swatch{width:9px;height:9px;border-radius:2px;background:var(--streaming)}
 .swatch.uk{background:var(--gb-broadcast)} .swatch.us{background:var(--us)}
 .legend .shifted{color:var(--us)}
 
@@ -88,7 +88,7 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .chip{
   display:block;width:100%;text-align:left;
   padding:5px 7px 5px 8px;border-radius:3px;
-  background:var(--panel);border-left:3px solid var(--unknown);
+  background:var(--panel);border-left:3px solid var(--streaming);
   font-size:13.5px;line-height:1.3;
 }
 .chip:hover{background:#242938}
@@ -237,7 +237,7 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 <div class="legend">
   <div class="key"><span class="swatch uk"></span> UK broadcast</div>
   <div class="key"><span class="swatch us"></span> US broadcast</div>
-  <div class="key"><span class="swatch"></span> No listed country</div>
+  <div class="key"><span class="swatch"></span> Streaming</div>
   <div class="key"><span class="shifted">+1</span> shown the day after it aired</div>
   <div class="key" style="margin-left:auto">
     Listings from <a href="https://www.tvmaze.com" target="_blank" rel="noopener"
@@ -262,9 +262,10 @@ const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-$
 const todayISO = iso(new Date());
 const el = id => document.getElementById(id);
 
-function regionClass(country){
-  if (country === "GB") return "uk";
-  if (country === "US") return "us";
+function regionClass(e){
+  if (!e.is_broadcast) return "";  // streaming - red, regardless of what country it claims
+  if (e.country === "GB") return "uk";
+  if (e.country === "US") return "us";
   return "";
 }
 function epCode(e){
@@ -291,7 +292,7 @@ function makeGroup(eps){
   return {
     group: true, episodes: eps,
     show: first.show, show_id: first.show_id, network: first.network,
-    country: first.country, shift_days: first.shift_days,
+    country: first.country, is_broadcast: first.is_broadcast, shift_days: first.shift_days,
     display_date: first.display_date, airdate: first.airdate,
   };
 }
@@ -327,7 +328,7 @@ async function load(){
 
 function chip(e){
   const b = document.createElement("button");
-  b.className = `chip ${regionClass(e.country)}`;
+  b.className = `chip ${regionClass(e)}`;
   b.innerHTML = `<span class="title"></span><span class="meta"></span>`;
   b.querySelector(".title").textContent = e.show;
   const meta = b.querySelector(".meta");

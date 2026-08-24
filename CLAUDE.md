@@ -103,18 +103,24 @@ with a landing-page card. Verified against the real TVmaze API and real followed
 popover, and the sub-760px agenda layout all checked in a browser against the live
 deployment.
 
-**Known gap:** `default_shift()` deliberately treats every streaming `webChannel` as
-no-shift, which is right for genuine worldwide-simultaneous drops (Netflix, Prime,
-Paramount+) and was fixed to also be right for US-only ones that happen to report a
-country anyway (Hulu, Peacock — confirmed via TVmaze's raw API that both come through
-`webChannel`, not `network`, so the September 2026 fix stopped auto-shifting them).
-HBO Max is the one case that still falls through wrong: it reports no country at all
-(same as the global streamers), but it *isn't* simultaneous — it's a US-only service on
-US time, same as any broadcast network. Confirmed against two real followed shows
-(`Hacks`, `The Pitt`): both get `shift_days = 0` by default and need the per-show
-override ticked manually. If more HBO Max (or similarly US-only, no-country) shows get
-added, worth hardcoding a short list of known US-only streaming networks as a second
-check in `default_shift()`, rather than relying on TVmaze's country field alone.
+**`shows.is_broadcast` is the real broadcast/streaming signal, not `country`.**
+`country` is display-only (`network`, falling back to `webChannel`, so Hulu/Peacock
+still show "US" next to their name). `is_broadcast` is true only when TVmaze's
+`network` field itself reports a country — confirmed via TVmaze's raw API that Hulu
+and Peacock both come through `webChannel` with no `network` at all. Both
+`default_shift()` and the calendar's colour-coding (`regionClass()` in the frontend)
+key off `is_broadcast`, not `country`: a streaming service that happens to claim "US"
+gets no `+1` and renders in the streaming colour (red), not the US-broadcast one
+(blue) — a August 2026 fix, since both used to trust `country` directly.
+
+**Known gap:** HBO Max still falls through wrong. It reports no country at all (same
+as the global, simultaneous-drop streamers Netflix/Prime/Paramount+), so it gets
+`is_broadcast = false` like them and defaults to no shift — but unlike them, HBO Max
+*isn't* simultaneous, it's a US-only service on US time, same as any broadcast
+network. Confirmed against two real followed shows (`Hacks`, `The Pitt`): both need
+the per-show override ticked manually. If more HBO Max (or similarly US-only,
+no-country) shows get added, worth hardcoding a short list of known US-only streaming
+networks as a second check, rather than relying on TVmaze's country field alone.
 
 **Not done:** no tests in the repo; no `/api/sync-list` button in the Shows panel
 (endpoint only); no local caching of TVmaze poster images; the ICS feed is
