@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>tvcal</title>
+<style>
+:root{
+  --ink:#12141d; --panel:#1a1e2a; --edge:#2a3040; --edge-soft:#222736;
+  --text:#e7e9f0; --dim:#8b93a8; --faint:#5c6479;
+  --uk:#f0b429; --us:#56b6d8; --unknown:#7a819a;
+  --mono:ui-monospace,"SF Mono","Cascadia Mono","JetBrains Mono",Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --r:5px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--ink); color:var(--text); font-family:var(--sans);
+  font-size:14px; line-height:1.45; -webkit-font-smoothing:antialiased;
+}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--uk);outline-offset:2px}
+
+/* ---------- header ---------- */
+.topbar{
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  padding:14px 20px;border-bottom:1px solid var(--edge);
+  position:sticky;top:0;background:var(--ink);z-index:20;
+}
+.wordmark{font-family:var(--mono);font-size:15px;letter-spacing:.14em;text-transform:uppercase;color:var(--text)}
+.wordmark b{color:var(--uk);font-weight:600}
+.nav{display:flex;align-items:center;gap:2px;margin-left:auto}
+.nav button{
+  padding:6px 11px;border:1px solid var(--edge);border-radius:var(--r);
+  font-family:var(--mono);font-size:12px;color:var(--dim);
+}
+.nav button:hover{border-color:var(--faint);color:var(--text)}
+.period{
+  font-family:var(--mono);font-size:13px;letter-spacing:.08em;text-transform:uppercase;
+  min-width:170px;text-align:center;
+}
+.tools{display:flex;gap:8px}
+.tools button{
+  padding:6px 13px;border:1px solid var(--edge);border-radius:var(--r);font-size:13px;color:var(--dim);
+}
+.tools button:hover{border-color:var(--faint);color:var(--text)}
+.tools .primary{background:var(--uk);border-color:var(--uk);color:#1a1405;font-weight:550}
+.tools .primary:hover{background:#ffc743;border-color:#ffc743;color:#1a1405}
+
+/* ---------- legend ---------- */
+.legend{
+  display:flex;gap:20px;flex-wrap:wrap;align-items:center;
+  padding:9px 20px;border-bottom:1px solid var(--edge-soft);
+  font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.05em;
+}
+.key{display:flex;align-items:center;gap:7px}
+.swatch{width:9px;height:9px;border-radius:2px;background:var(--unknown)}
+.swatch.uk{background:var(--uk)} .swatch.us{background:var(--us)}
+.legend .shifted{color:var(--us)}
+
+/* ---------- month grid ---------- */
+.grid-head{
+  display:grid;grid-template-columns:repeat(7,1fr);
+  padding:0 20px;border-bottom:1px solid var(--edge-soft);
+}
+.grid-head span{
+  padding:8px 6px;font-family:var(--mono);font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--faint);
+}
+.grid{
+  display:grid;grid-template-columns:repeat(7,1fr);
+  gap:1px;background:var(--edge-soft);
+  margin:0 20px 24px;border:1px solid var(--edge-soft);
+}
+.cell{
+  background:var(--ink);min-height:118px;padding:7px 7px 9px;
+  display:flex;flex-direction:column;gap:5px;
+}
+.cell.dim{background:#101219}
+.cell.dim .daynum{color:var(--faint)}
+.cell.today{background:#171a24;box-shadow:inset 3px 0 0 var(--uk)}
+.daynum{font-family:var(--mono);font-size:12px;color:var(--dim);letter-spacing:.03em}
+.cell.today .daynum{color:var(--uk)}
+
+.chip{
+  display:block;width:100%;text-align:left;
+  padding:5px 7px 5px 8px;border-radius:3px;
+  background:var(--panel);border-left:3px solid var(--unknown);
+  font-size:12px;line-height:1.3;
+}
+.chip:hover{background:#242938}
+.chip.uk{border-left-color:var(--uk)}
+.chip.us{border-left-color:var(--us)}
+.chip .title{display:block;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip .meta{
+  display:flex;gap:6px;align-items:center;
+  font-family:var(--mono);font-size:10.5px;color:var(--dim);margin-top:2px;
+}
+.shift-badge{color:var(--us);letter-spacing:.03em}
+
+/* ---------- agenda (narrow screens) ---------- */
+.agenda{padding:4px 16px 32px;display:none}
+.agenda-day{border-top:1px solid var(--edge-soft);padding:12px 0}
+.agenda-day.today .agenda-date{color:var(--uk)}
+.agenda-date{
+  font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--dim);margin-bottom:8px;
+}
+.agenda-day .chip{margin-bottom:5px;padding:8px 10px}
+
+/* ---------- empty ---------- */
+.empty{
+  margin:60px 20px;padding:38px 26px;border:1px dashed var(--edge);border-radius:8px;
+  text-align:center;max-width:460px;margin-left:auto;margin-right:auto;
+}
+.empty h2{font-size:16px;font-weight:550;margin:0 0 6px}
+.empty p{color:var(--dim);margin:0 0 18px}
+
+/* ---------- slide-over ---------- */
+.scrim{position:fixed;inset:0;background:rgba(6,7,11,.66);z-index:30}
+.panel{
+  position:fixed;top:0;right:0;bottom:0;width:min(430px,100%);z-index:31;
+  background:var(--panel);border-left:1px solid var(--edge);
+  display:flex;flex-direction:column;
+}
+.panel-head{
+  display:flex;align-items:center;gap:12px;padding:16px 18px;border-bottom:1px solid var(--edge);
+}
+.panel-head h2{
+  margin:0;font-family:var(--mono);font-size:12px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--dim);font-weight:500;
+}
+.panel-head .close{margin-left:auto;font-size:20px;color:var(--dim);line-height:1;padding:0 4px}
+.panel-body{overflow-y:auto;padding:16px 18px 32px;flex:1}
+.search-field{
+  width:100%;padding:10px 12px;background:var(--ink);color:var(--text);
+  border:1px solid var(--edge);border-radius:var(--r);font:inherit;margin-bottom:16px;
+}
+.search-field::placeholder{color:var(--faint)}
+.search-field:focus{border-color:var(--faint);outline:none}
+
+.row{display:flex;gap:12px;padding:11px 0;border-bottom:1px solid var(--edge-soft)}
+.row img{width:44px;height:62px;object-fit:cover;border-radius:3px;background:var(--ink);flex:none}
+.row .info{flex:1;min-width:0}
+.row .name{font-weight:500;font-size:13.5px}
+.row .sub{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:3px}
+.row .act{display:flex;flex-direction:column;gap:6px;justify-content:center;flex:none}
+.row .act button{
+  padding:5px 10px;border:1px solid var(--edge);border-radius:var(--r);
+  font-size:12px;color:var(--dim);white-space:nowrap;
+}
+.row .act button:hover{border-color:var(--faint);color:var(--text)}
+.row .act .add{border-color:var(--uk);color:var(--uk)}
+.row .act .add:hover{background:var(--uk);color:#1a1405}
+.row .act .danger:hover{border-color:#c2554a;color:#e08b82}
+.toggle{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;color:var(--dim);cursor:pointer;margin-top:6px}
+.toggle input{accent-color:var(--us);margin:0}
+.note{font-family:var(--mono);font-size:11px;color:var(--faint);line-height:1.6}
+.panel-body .note{margin:0 0 14px}
+.feed{
+  margin-top:22px;padding-top:16px;border-top:1px solid var(--edge-soft);
+}
+.feed code{
+  display:block;font-family:var(--mono);font-size:11px;color:var(--dim);
+  background:var(--ink);border:1px solid var(--edge-soft);border-radius:var(--r);
+  padding:8px 10px;margin-top:8px;word-break:break-all;
+}
+
+/* ---------- episode detail ---------- */
+.detail{
+  position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:32;
+  width:min(380px,calc(100% - 32px));background:var(--panel);
+  border:1px solid var(--edge);border-radius:8px;padding:20px;
+}
+.detail h3{margin:0 0 3px;font-size:16px;font-weight:550}
+.detail .ep{font-family:var(--mono);font-size:12px;color:var(--dim);margin-bottom:14px}
+.detail dl{display:grid;grid-template-columns:auto 1fr;gap:7px 16px;margin:0;font-size:12.5px}
+.detail dt{font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.05em;text-transform:uppercase}
+.detail dd{margin:0}
+.detail .out{display:block;margin-top:16px;font-size:12px;color:var(--us)}
+
+.toast{
+  position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:40;
+  background:var(--panel);border:1px solid var(--edge);border-radius:var(--r);
+  padding:9px 16px;font-size:13px;
+}
+
+@media (max-width:760px){
+  .grid,.grid-head{display:none}
+  .agenda{display:block}
+  .nav{margin-left:0;width:100%;order:3}
+  .period{flex:1}
+}
+@media (prefers-reduced-motion:no-preference){
+  .chip{transition:background .12s ease}
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wordmark">tv<b>cal</b></div>
+  <div class="tools">
+    <button class="primary" id="btn-search">Add a show</button>
+    <button id="btn-manage">Shows</button>
+  </div>
+  <div class="nav">
+    <button id="btn-prev" aria-label="Previous month">&larr;</button>
+    <div class="period" id="period">&nbsp;</div>
+    <button id="btn-next" aria-label="Next month">&rarr;</button>
+    <button id="btn-today">Today</button>
+  </div>
+</header>
+
+<div class="legend">
+  <div class="key"><span class="swatch uk"></span> UK broadcast</div>
+  <div class="key"><span class="swatch us"></span> US broadcast</div>
+  <div class="key"><span class="swatch"></span> No listed country</div>
+  <div class="key"><span class="shifted">+1</span> shown the day after it aired</div>
+  <div class="key" style="margin-left:auto">
+    Listings from <a href="https://www.tvmaze.com" target="_blank" rel="noopener"
+    style="color:var(--dim)">TVmaze</a>, CC BY-SA
+  </div>
+</div>
+
+<div class="grid-head" id="grid-head"></div>
+<div class="grid" id="grid"></div>
+<div class="agenda" id="agenda"></div>
+
+<script>
+const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+const MONTHS = ["January","February","March","April","May","June","July",
+                "August","September","October","November","December"];
+
+let cursor = new Date();
+cursor.setDate(1);
+let episodes = [];
+
+const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+const todayISO = iso(new Date());
+const el = id => document.getElementById(id);
+
+function regionClass(country){
+  if (country === "GB") return "uk";
+  if (country === "US") return "us";
+  return "";
+}
+function epCode(e){
+  return (e.season && e.number) ? `S${String(e.season).padStart(2,"0")}E${String(e.number).padStart(2,"0")}` : "Special";
+}
+
+function gridRange(){
+  const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+  const start = new Date(first);
+  start.setDate(1 - ((first.getDay() + 6) % 7));      // back to Monday
+  const end = new Date(start);
+  end.setDate(start.getDate() + 41);                  // six weeks
+  return [start, end];
+}
+
+async function load(){
+  const [start, end] = gridRange();
+  el("period").textContent = `${MONTHS[cursor.getMonth()]} ${cursor.getFullYear()}`;
+  const res = await fetch(`/api/calendar?from=${iso(start)}&to=${iso(end)}`);
+  const data = await res.json();
+  episodes = data.episodes || [];
+  render(start);
+}
+
+function chip(e){
+  const b = document.createElement("button");
+  b.className = `chip ${regionClass(e.country)}`;
+  b.innerHTML = `<span class="title"></span><span class="meta"></span>`;
+  b.querySelector(".title").textContent = e.show;
+  const meta = b.querySelector(".meta");
+  meta.append(epCode(e));
+  if (e.shift_days > 0){
+    const badge = document.createElement("span");
+    badge.className = "shift-badge";
+    badge.textContent = `+${e.shift_days}`;
+    meta.append(badge);
+  }
+  b.onclick = () => showDetail(e);
+  return b;
+}
+
+function render(start){
+  const head = el("grid-head"), grid = el("grid"), agenda = el("agenda");
+  head.innerHTML = ""; grid.innerHTML = ""; agenda.innerHTML = "";
+  document.querySelector(".empty")?.remove();
+
+  const byDay = {};
+  for (const e of episodes) (byDay[e.display_date] ||= []).push(e);
+
+  for (const d of DAYS){ const s = document.createElement("span"); s.textContent = d; head.append(s); }
+
+  for (let i = 0; i < 42; i++){
+    const day = new Date(start);
+    day.setDate(start.getDate() + i);
+    const key = iso(day);
+    const cell = document.createElement("div");
+    cell.className = "cell";
+    if (day.getMonth() !== cursor.getMonth()) cell.classList.add("dim");
+    if (key === todayISO) cell.classList.add("today");
+    const num = document.createElement("div");
+    num.className = "daynum";
+    num.textContent = day.getDate() === 1 ? `${day.getDate()} ${MONTHS[day.getMonth()].slice(0,3)}` : day.getDate();
+    cell.append(num);
+    for (const e of (byDay[key] || [])) cell.append(chip(e));
+    grid.append(cell);
+  }
+
+  // agenda: only days that actually have something, from today onward
+  const days = Object.keys(byDay).filter(k => k >= todayISO).sort();
+  for (const key of days){
+    const wrap = document.createElement("div");
+    wrap.className = "agenda-day" + (key === todayISO ? " today" : "");
+    const label = document.createElement("div");
+    label.className = "agenda-date";
+    const d = new Date(key + "T00:00:00");
+    label.textContent = key === todayISO ? "Today" :
+      `${DAYS[(d.getDay()+6)%7]} ${d.getDate()} ${MONTHS[d.getMonth()].slice(0,3)}`;
+    wrap.append(label);
+    for (const e of byDay[key]) wrap.append(chip(e));
+    agenda.append(wrap);
+  }
+
+  if (!episodes.length) checkEmpty();
+}
+
+async function checkEmpty(){
+  const shows = await (await fetch("/api/shows")).json();
+  if (shows.length) return;
+  const box = document.createElement("div");
+  box.className = "empty";
+  box.innerHTML = `<h2>Nothing on yet</h2>
+    <p>Add a UK or US show and its episodes fill in the calendar.</p>`;
+  const b = document.createElement("button");
+  b.className = "primary";
+  b.style.cssText = "padding:8px 16px;border-radius:5px;background:var(--uk);color:#1a1405;font-weight:550";
+  b.textContent = "Add a show";
+  b.onclick = openSearch;
+  box.append(b);
+  el("grid").after(box);
+}
+
+/* ---------- episode detail ---------- */
+function showDetail(e){
+  closeOverlays();
+  const scrim = document.createElement("div");
+  scrim.className = "scrim";
+  scrim.onclick = closeOverlays;
+  const box = document.createElement("div");
+  box.className = "detail";
+  const aired = new Date(e.airdate + "T00:00:00");
+  const airedLabel = `${DAYS[(aired.getDay()+6)%7]} ${aired.getDate()} ${MONTHS[aired.getMonth()].slice(0,3)} ${aired.getFullYear()}`;
+  box.innerHTML = `
+    <h3></h3>
+    <div class="ep"></div>
+    <dl>
+      <dt>Aired</dt><dd>${airedLabel}${e.airtime ? " at " + e.airtime : ""}</dd>
+      <dt>On calendar</dt><dd>${e.shift_days ? `${e.display_date} (+${e.shift_days} day)` : "same day"}</dd>
+      <dt>Network</dt><dd>${e.network || "unknown"}${e.country ? " (" + e.country + ")" : ""}</dd>
+      <dt>Runtime</dt><dd>${e.runtime ? e.runtime + " min" : "unknown"}</dd>
+    </dl>`;
+  box.querySelector("h3").textContent = e.show;
+  box.querySelector(".ep").textContent = `${epCode(e)}${e.episode ? " — " + e.episode : ""}`;
+  if (e.url){
+    const a = document.createElement("a");
+    a.className = "out"; a.href = e.url; a.target = "_blank"; a.rel = "noopener";
+    a.textContent = "Open on TVmaze";
+    box.append(a);
+  }
+  document.body.append(scrim, box);
+}
+
+/* ---------- panels ---------- */
+function closeOverlays(){
+  document.querySelectorAll(".scrim,.panel,.detail").forEach(n => n.remove());
+}
+
+function openPanel(title){
+  closeOverlays();
+  const scrim = document.createElement("div");
+  scrim.className = "scrim";
+  scrim.onclick = closeOverlays;
+  const panel = document.createElement("div");
+  panel.className = "panel";
+  panel.innerHTML = `<div class="panel-head"><h2></h2><button class="close" aria-label="Close">&times;</button></div>
+                     <div class="panel-body"></div>`;
+  panel.querySelector("h2").textContent = title;
+  panel.querySelector(".close").onclick = closeOverlays;
+  document.body.append(scrim, panel);
+  return panel.querySelector(".panel-body");
+}
+
+function toast(msg){
+  document.querySelector(".toast")?.remove();
+  const t = document.createElement("div");
+  t.className = "toast";
+  t.textContent = msg;
+  document.body.append(t);
+  setTimeout(() => t.remove(), 2600);
+}
+
+function openSearch(){
+  const body = openPanel("Add a show");
+  body.innerHTML = `<input class="search-field" id="q" placeholder="Search TV shows" autocomplete="off">
+                    <div class="note">US shows are added with a one-day offset by default. You can change that per show under Shows.</div>
+                    <div id="results"></div>`;
+  const input = body.querySelector("#q");
+  const results = body.querySelector("#results");
+  input.focus();
+
+  let timer;
+  input.oninput = () => {
+    clearTimeout(timer);
+    const q = input.value.trim();
+    if (q.length < 2){ results.innerHTML = ""; return; }
+    timer = setTimeout(async () => {
+      results.innerHTML = `<div class="note">Searching…</div>`;
+      const list = await (await fetch("/api/search?q=" + encodeURIComponent(q))).json();
+      if (list.error){ results.innerHTML = `<div class="note">${list.error}</div>`; return; }
+      if (!list.length){ results.innerHTML = `<div class="note">No shows matched that.</div>`; return; }
+      results.innerHTML = "";
+      for (const s of list) results.append(searchRow(s));
+    }, 280);
+  };
+}
+
+function searchRow(s){
+  const row = document.createElement("div");
+  row.className = "row";
+  const year = s.premiered ? s.premiered.slice(0,4) : "—";
+  row.innerHTML = `${s.image ? `<img src="${s.image}" alt="">` : `<div style="width:44px;height:62px"></div>`}
+    <div class="info"><div class="name"></div>
+      <div class="sub"></div></div>
+    <div class="act"></div>`;
+  row.querySelector(".name").textContent = s.name;
+  row.querySelector(".sub").textContent =
+    `${year} · ${s.network || "no network"} · ${s.country || "??"}${s.default_shift ? " · +1 day" : ""}`;
+  const act = row.querySelector(".act");
+  const btn = document.createElement("button");
+  if (s.followed){ btn.textContent = "Added"; btn.disabled = true; btn.style.opacity = ".45"; }
+  else {
+    btn.className = "add"; btn.textContent = "Add";
+    btn.onclick = async () => {
+      btn.disabled = true; btn.textContent = "Adding…";
+      const res = await fetch("/api/shows", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({id: s.id})
+      });
+      if (res.ok){ btn.textContent = "Added"; btn.style.opacity = ".45"; toast(`${s.name} added`); load(); }
+      else { btn.disabled = false; btn.textContent = "Retry"; toast("Could not add that show"); }
+    };
+  }
+  act.append(btn);
+  return row;
+}
+
+async function openManage(){
+  const body = openPanel("Shows");
+  body.innerHTML = `<div class="note">Loading…</div>`;
+  const shows = await (await fetch("/api/shows")).json();
+  body.innerHTML = "";
+  if (!shows.length){
+    body.innerHTML = `<div class="note">No shows yet.</div>`;
+  }
+  for (const s of shows) body.append(manageRow(s));
+
+  const feed = document.createElement("div");
+  feed.className = "feed";
+  feed.innerHTML = `<div class="note">Subscribe to this calendar from a phone or desktop client:</div>
+                    <code>${location.origin}/calendar.ics</code>`;
+  const refresh = document.createElement("button");
+  refresh.style.cssText = "margin-top:14px;padding:6px 12px;border:1px solid var(--edge);border-radius:5px;color:var(--dim)";
+  refresh.textContent = "Refresh episode data now";
+  refresh.onclick = async () => {
+    await fetch("/api/refresh", {method: "POST"});
+    toast("Refreshing in the background");
+  };
+  feed.append(refresh);
+  body.append(feed);
+}
+
+function manageRow(s){
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML = `${s.image ? `<img src="${s.image}" alt="">` : `<div style="width:44px;height:62px"></div>`}
+    <div class="info"><div class="name"></div><div class="sub"></div>
+      <label class="toggle"><input type="checkbox"> show the day after it airs</label>
+    </div>
+    <div class="act"></div>`;
+  row.querySelector(".name").textContent = s.name;
+  row.querySelector(".sub").textContent =
+    `${s.network || "no network"} · ${s.country || "??"} · ${s.status || "?"} · ${s.episode_count} episodes`;
+
+  const box = row.querySelector("input");
+  box.checked = s.shift_days > 0;
+  box.onchange = async () => {
+    const res = await fetch(`/api/shows/${s.id}`, {
+      method: "PATCH", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({shift_days: box.checked ? 1 : 0})
+    });
+    if (res.ok){ toast(box.checked ? `${s.name} moved forward a day` : `${s.name} back on its air date`); load(); }
+    else { box.checked = !box.checked; toast("Could not save that"); }
+  };
+
+  const remove = document.createElement("button");
+  remove.className = "danger";
+  remove.textContent = "Remove";
+  remove.onclick = async () => {
+    remove.disabled = true;
+    await fetch(`/api/shows/${s.id}`, {method: "DELETE"});
+    row.remove(); toast(`${s.name} removed`); load();
+  };
+  row.querySelector(".act").append(remove);
+  return row;
+}
+
+/* ---------- wiring ---------- */
+el("btn-prev").onclick = () => { cursor.setMonth(cursor.getMonth() - 1); load(); };
+el("btn-next").onclick = () => { cursor.setMonth(cursor.getMonth() + 1); load(); };
+el("btn-today").onclick = () => { cursor = new Date(); cursor.setDate(1); load(); };
+el("btn-search").onclick = openSearch;
+el("btn-manage").onclick = openManage;
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeOverlays(); });
+
+load();
+</script>
+</body>
+</html>
