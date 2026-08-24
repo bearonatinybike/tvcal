@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS shows (
     url         TEXT,
     shift_days  INTEGER NOT NULL DEFAULT 0, -- days to push the calendar entry forward
     added_at    TEXT NOT NULL,
-    refreshed_at TEXT
+    refreshed_at TEXT,
+    archived    INTEGER NOT NULL DEFAULT 0  -- off the calendar and out of the refresh sweep, but kept
 );
 
 CREATE TABLE IF NOT EXISTS episodes (
@@ -74,6 +75,9 @@ def init_db():
     with db() as conn:
         conn.execute("PRAGMA journal_mode = WAL")
         conn.executescript(SCHEMA)
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(shows)")}
+        if "archived" not in cols:
+            conn.execute("ALTER TABLE shows ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
 
 
 # --------------------------------------------------------------------------
@@ -215,7 +219,8 @@ def run_list_sync():
 
 def refresh_all():
     with db() as conn:
-        ids = [r["id"] for r in conn.execute("SELECT id FROM shows ORDER BY id")]
+        ids = [r["id"] for r in conn.execute(
+            "SELECT id FROM shows WHERE archived = 0 ORDER BY id")]
     for show_id in ids:
         try:
             with db() as conn:
@@ -303,11 +308,17 @@ def api_add_show():
 @app.patch("/api/shows/<int:show_id>")
 def api_update_show(show_id):
     payload = request.get_json(silent=True) or {}
-    if "shift_days" not in payload:
-        return jsonify({"error": "shift_days is required"}), 400
-    shift = max(0, min(7, int(payload["shift_days"])))
+    if "shift_days" not in payload and "archived" not in payload:
+        return jsonify({"error": "shift_days or archived is required"}), 400
+    sets, params = [], []
+    if "shift_days" in payload:
+        sets.append("shift_days = ?")
+        params.append(max(0, min(7, int(payload["shift_days"]))))
+    if "archived" in payload:
+        sets.append("archived = ?")
+        params.append(1 if payload["archived"] else 0)
     with db() as conn:
-        cur = conn.execute("UPDATE shows SET shift_days = ? WHERE id = ?", (shift, show_id))
+        cur = conn.execute(f"UPDATE shows SET {', '.join(sets)} WHERE id = ?", (*params, show_id))
         if cur.rowcount == 0:
             return jsonify({"error": "show not found"}), 404
         row = conn.execute("SELECT * FROM shows WHERE id = ?", (show_id,)).fetchone()
@@ -361,7 +372,8 @@ def calendar_rows(start, end):
                       s.shift_days, s.image,
                       date(e.airdate, '+' || s.shift_days || ' days') AS display_date
                FROM episodes e JOIN shows s ON s.id = e.show_id
-               WHERE date(e.airdate, '+' || s.shift_days || ' days') BETWEEN ? AND ?
+               WHERE s.archived = 0
+                 AND date(e.airdate, '+' || s.shift_days || ' days') BETWEEN ? AND ?
                ORDER BY display_date, COALESCE(e.airtime, '99:99'), s.name COLLATE NOCASE""",
             (start.isoformat(), end.isoformat()),
         ).fetchall()

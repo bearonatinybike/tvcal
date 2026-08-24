@@ -156,6 +156,12 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .row .act .add{border-color:var(--uk);color:var(--uk)}
 .row .act .add:hover{background:var(--uk);color:#1a1405}
 .row .act .danger:hover{border-color:#c2554a;color:#e08b82}
+.row.archived{opacity:.55}
+.group-label{
+  font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--faint);margin:20px 0 4px;
+}
+.group-label:first-child{margin-top:0}
 .toggle{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:12.5px;color:var(--dim);cursor:pointer;margin-top:6px}
 .toggle input{accent-color:var(--us);margin:0}
 .note{font-family:var(--mono);font-size:12.5px;color:var(--faint);line-height:1.6}
@@ -552,7 +558,20 @@ async function openManage(){
   if (!shows.length){
     body.innerHTML = `<div class="note">No shows yet.</div>`;
   }
-  for (const s of shows) body.append(manageRow(s));
+
+  const active = shows.filter(s => !s.archived && s.status !== "Ended");
+  const ended = shows.filter(s => !s.archived && s.status === "Ended");
+  const archived = shows.filter(s => s.archived);
+
+  for (const s of active) body.append(manageRow(s));
+  if (ended.length){
+    body.append(groupLabel("Ended"));
+    for (const s of ended) body.append(manageRow(s));
+  }
+  if (archived.length){
+    body.append(groupLabel("Archived"));
+    for (const s of archived) body.append(manageRow(s));
+  }
 
   const feed = document.createElement("div");
   feed.className = "feed";
@@ -569,28 +588,56 @@ async function openManage(){
   body.append(feed);
 }
 
+function groupLabel(text){
+  const h = document.createElement("div");
+  h.className = "group-label";
+  h.textContent = text;
+  return h;
+}
+
 function manageRow(s){
   const row = document.createElement("div");
-  row.className = "row";
+  row.className = "row" + (s.archived ? " archived" : "");
   row.innerHTML = `${s.image ? `<img src="${s.image}" alt="">` : `<div style="width:44px;height:62px"></div>`}
     <div class="info"><div class="name"></div><div class="sub"></div>
-      <label class="toggle"><input type="checkbox"> show the day after it airs</label>
+      ${s.archived ? "" : `<label class="toggle"><input type="checkbox"> show the day after it airs</label>`}
     </div>
     <div class="act"></div>`;
   row.querySelector(".name").textContent = s.name;
   row.querySelector(".sub").textContent =
     `${s.network || "no network"} · ${s.country || "??"} · ${s.status || "?"} · ${s.episode_count} episodes`;
 
-  const box = row.querySelector("input");
-  box.checked = s.shift_days > 0;
-  box.onchange = async () => {
-    const res = await fetch(`/api/shows/${s.id}`, {
-      method: "PATCH", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({shift_days: box.checked ? 1 : 0})
-    });
-    if (res.ok){ toast(box.checked ? `${s.name} moved forward a day` : `${s.name} back on its air date`); load(); }
-    else { box.checked = !box.checked; toast("Could not save that"); }
-  };
+  if (!s.archived){
+    const box = row.querySelector("input");
+    box.checked = s.shift_days > 0;
+    box.onchange = async () => {
+      const res = await fetch(`/api/shows/${s.id}`, {
+        method: "PATCH", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({shift_days: box.checked ? 1 : 0})
+      });
+      if (res.ok){ toast(box.checked ? `${s.name} moved forward a day` : `${s.name} back on its air date`); load(); }
+      else { box.checked = !box.checked; toast("Could not save that"); }
+    };
+  }
+
+  const act = row.querySelector(".act");
+
+  if (s.status === "Ended" || s.archived){
+    const archiveBtn = document.createElement("button");
+    archiveBtn.textContent = s.archived ? "Unarchive" : "Archive";
+    archiveBtn.onclick = async () => {
+      archiveBtn.disabled = true;
+      const res = await fetch(`/api/shows/${s.id}`, {
+        method: "PATCH", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({archived: !s.archived})
+      });
+      if (res.ok){
+        toast(s.archived ? `${s.name} unarchived` : `${s.name} archived — off the calendar`);
+        openManage(); load();
+      } else { archiveBtn.disabled = false; toast("Could not save that"); }
+    };
+    act.append(archiveBtn);
+  }
 
   const remove = document.createElement("button");
   remove.className = "danger";
@@ -600,7 +647,7 @@ function manageRow(s){
     await fetch(`/api/shows/${s.id}`, {method: "DELETE"});
     row.remove(); toast(`${s.name} removed`); load();
   };
-  row.querySelector(".act").append(remove);
+  act.append(remove);
   return row;
 }
 
