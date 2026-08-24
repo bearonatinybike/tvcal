@@ -56,7 +56,8 @@ CREATE TABLE IF NOT EXISTS episodes (
     airdate  TEXT,                          -- YYYY-MM-DD, network local date
     airtime  TEXT,                          -- HH:MM, network local time
     runtime  INTEGER,
-    url      TEXT
+    url      TEXT,
+    summary  TEXT                            -- TVmaze's HTML synopsis, may be NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_episodes_airdate ON episodes(airdate);
@@ -78,6 +79,9 @@ def init_db():
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(shows)")}
         if "archived" not in cols:
             conn.execute("ALTER TABLE shows ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
+        ep_cols = {r["name"] for r in conn.execute("PRAGMA table_info(episodes)")}
+        if "summary" not in ep_cols:
+            conn.execute("ALTER TABLE episodes ADD COLUMN summary TEXT")
 
 
 # --------------------------------------------------------------------------
@@ -182,14 +186,15 @@ def sync_show(show_id, conn, set_shift=None):
             continue  # unscheduled specials
         keep.append(ep["id"])
         conn.execute(
-            """INSERT INTO episodes (id, show_id, season, number, name, airdate, airtime, runtime, url)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """INSERT INTO episodes (id, show_id, season, number, name, airdate, airtime, runtime, url, summary)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(id) DO UPDATE SET
                    season = excluded.season, number = excluded.number, name = excluded.name,
                    airdate = excluded.airdate, airtime = excluded.airtime,
-                   runtime = excluded.runtime, url = excluded.url""",
+                   runtime = excluded.runtime, url = excluded.url, summary = excluded.summary""",
             (ep["id"], show_id, ep.get("season"), ep.get("number"), ep.get("name"),
-             ep.get("airdate"), ep.get("airtime") or None, ep.get("runtime"), ep.get("url")),
+             ep.get("airdate"), ep.get("airtime") or None, ep.get("runtime"), ep.get("url"),
+             ep.get("summary")),
         )
 
     if keep:
@@ -367,7 +372,7 @@ def calendar_rows(start, end):
     with db() as conn:
         rows = conn.execute(
             """SELECT e.id, e.season, e.number, e.name AS episode, e.airdate, e.airtime,
-                      e.runtime, e.url,
+                      e.runtime, e.url, e.summary,
                       s.id AS show_id, s.name AS show, s.network, s.country,
                       s.shift_days, s.image,
                       date(e.airdate, '+' || s.shift_days || ' days') AS display_date

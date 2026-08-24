@@ -187,10 +187,16 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .detail dt{font-family:var(--mono);font-size:12.5px;color:var(--faint);letter-spacing:.05em;text-transform:uppercase}
 .detail dd{margin:0}
 .detail .out{display:block;margin-top:16px;font-size:13.5px;color:var(--us)}
+.detail .summary{margin-top:14px;font-size:13.5px;line-height:1.5;color:var(--text)}
+.detail .ep-list .summary{
+  margin-top:4px;font-size:12px;color:var(--dim);line-height:1.4;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
 .detail .ep-list{list-style:none;margin:14px 0 0;padding-top:10px;border-top:1px solid var(--edge);max-height:220px;overflow-y:auto}
-.detail .ep-list li{border-bottom:1px solid var(--edge-soft);font-size:13.5px}
+.detail .ep-list li{border-bottom:1px solid var(--edge-soft);font-size:13.5px;padding:7px 0}
 .detail .ep-list li:last-child{border-bottom:0}
-.detail .ep-list li,.detail .ep-list li>a{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:6px 0;color:inherit;text-decoration:none}
+.detail .ep-list li>a{display:block;color:inherit;text-decoration:none}
+.detail .ep-list .ep-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .detail .ep-list .code{font-family:var(--mono);color:var(--dim);flex-shrink:0}
 .detail .ep-list .name{color:var(--text);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .detail .ep-list li>a:hover .name{color:var(--us)}
@@ -397,6 +403,16 @@ async function checkEmpty(){
 }
 
 /* ---------- episode detail ---------- */
+
+/* TVmaze summaries are a snippet of HTML (<p>...</p>, sometimes <b>/<i>).
+   Parse into a detached document and pull textContent rather than ever
+   passing it through innerHTML on the live page. */
+function stripHtml(html){
+  if (!html) return "";
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  return (doc.body.textContent || "").trim();
+}
+
 function showDetail(e){
   closeOverlays();
   const scrim = document.createElement("div");
@@ -417,6 +433,13 @@ function showDetail(e){
     </dl>`;
   box.querySelector("h3").textContent = e.show;
   box.querySelector(".ep").textContent = `${epCode(e)}${e.episode ? " — " + e.episode : ""}`;
+  const summaryText = stripHtml(e.summary);
+  if (summaryText){
+    const p = document.createElement("div");
+    p.className = "summary";
+    p.textContent = summaryText;
+    box.querySelector("dl").after(p);
+  }
   if (e.url){
     const a = document.createElement("a");
     a.className = "out"; a.href = e.url; a.target = "_blank"; a.rel = "noopener";
@@ -449,18 +472,25 @@ function showGroupDetail(g){
   const list = box.querySelector(".ep-list");
   for (const e of g.episodes){
     const li = document.createElement("li");
+    const row = document.createElement("div");
+    row.className = "ep-row";
     const code = document.createElement("span");
     code.className = "code"; code.textContent = epCode(e);
     const name = document.createElement("span");
     name.className = "name"; name.textContent = e.episode || "";
-    if (e.url){
-      const a = document.createElement("a");
-      a.href = e.url; a.target = "_blank"; a.rel = "noopener";
-      a.append(code, name);
-      li.append(a);
-    } else {
-      li.append(code, name);
+    row.append(code, name);
+
+    const wrap = document.createElement(e.url ? "a" : "div");
+    if (e.url){ wrap.href = e.url; wrap.target = "_blank"; wrap.rel = "noopener"; }
+    wrap.append(row);
+    const summaryText = stripHtml(e.summary);
+    if (summaryText){
+      const summary = document.createElement("div");
+      summary.className = "summary";
+      summary.textContent = summaryText;
+      wrap.append(summary);
     }
+    li.append(wrap);
     list.append(li);
   }
   document.body.append(scrim, box);
