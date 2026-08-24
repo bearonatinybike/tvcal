@@ -67,10 +67,15 @@ curl -X POST localhost:8087/api/refresh        # re-pull episodes for every show
 ## Key design decisions
 
 **Per-show offset, not a render-time rule.** `shows.shift_days` is stored, defaulting
-to 1 when the TVmaze country is `US` and 0 otherwise. Global streamers report no
-country at all, so they default to no shift — usually right, since they drop at
-00:00 UK. The UI has a per-show override. Shifted entries carry a `+1` badge and the
-episode popover shows the real air date, so the shift is never silent.
+to 1 only when TVmaze's `network` field (a genuine broadcast network, not a streaming
+`webChannel`) reports country `US` — that's the actual signal for "airs in US
+primetime, lands a UK day later." Streaming services report a `webChannel` instead of
+a `network`, so they default to no shift regardless of what country they claim: global
+ones (Netflix, Prime, Paramount+) report no country at all, and drop simultaneously at
+00:00 UK; US-only ones that *do* report a country (Hulu, Peacock) aren't broadcasting
+on a US evening schedule either, so the same "no shift" default applies. The UI has a
+per-show override for anything the default gets wrong. Shifted entries carry a `+1`
+badge and the episode popover shows the real air date, so the shift is never silent.
 
 **The content-list sync records state.** A `synced_shows` table holds the set as of
 the last sync. Without it, a union re-adds anything deleted on either side. With it,
@@ -98,15 +103,18 @@ with a landing-page card. Verified against the real TVmaze API and real followed
 popover, and the sub-760px agenda layout all checked in a browser against the live
 deployment.
 
-**Known gap:** `default_shift()` only looks at `network.country.code` /
-`webChannel.country.code`. Services that don't report a country at all — Netflix, Prime
-Video, Paramount+ — default to no shift, which is right, since they drop simultaneously
-at 00:00 UK. But HBO Max also reports no country, and it *isn't* simultaneous — it's a
-US-only service on US time, same as any broadcast network. Confirmed against two real
-followed shows (`Hacks`, `The Pitt`): both get `shift_days = 0` by default and need the
-per-show override ticked manually. If more HBO Max (or similarly US-only, no-country)
-shows get added, worth hardcoding a short list of known US-only streaming networks as a
-second check in `default_shift()`, rather than relying on the country code alone.
+**Known gap:** `default_shift()` deliberately treats every streaming `webChannel` as
+no-shift, which is right for genuine worldwide-simultaneous drops (Netflix, Prime,
+Paramount+) and was fixed to also be right for US-only ones that happen to report a
+country anyway (Hulu, Peacock — confirmed via TVmaze's raw API that both come through
+`webChannel`, not `network`, so the September 2026 fix stopped auto-shifting them).
+HBO Max is the one case that still falls through wrong: it reports no country at all
+(same as the global streamers), but it *isn't* simultaneous — it's a US-only service on
+US time, same as any broadcast network. Confirmed against two real followed shows
+(`Hacks`, `The Pitt`): both get `shift_days = 0` by default and need the per-show
+override ticked manually. If more HBO Max (or similarly US-only, no-country) shows get
+added, worth hardcoding a short list of known US-only streaming networks as a second
+check in `default_shift()`, rather than relying on TVmaze's country field alone.
 
 **Not done:** no tests in the repo; no `/api/sync-list` button in the Shows panel
 (endpoint only); no local caching of TVmaze poster images; the ICS feed is

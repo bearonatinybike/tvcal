@@ -136,8 +136,18 @@ def summarise_show(show):
     }
 
 
-def default_shift(country):
-    return 1 if country == "US" else 0
+def default_shift(show):
+    """+1 only for a genuine broadcast network reporting US.
+
+    A US streaming webChannel (Hulu, Peacock) isn't the same evening-
+    primetime pattern the shift exists for, even though TVmaze does report
+    a country for some of them - unlike network, where a US country really
+    does mean "airs in US primetime, lands a UK day later." Global
+    streamers reporting no country at all (Netflix, Prime) get no shift
+    either, on the assumption they drop simultaneously at UK midnight.
+    """
+    network = (show.get("network") or {}).get("country") or {}
+    return 1 if network.get("code") == "US" else 0
 
 
 def tvmaze_search_id(name):
@@ -165,7 +175,7 @@ def sync_show(show_id, conn, set_shift=None):
     elif existing:
         shift = existing["shift_days"]
     else:
-        shift = default_shift(meta["country"])
+        shift = default_shift(data)
 
     conn.execute(
         """INSERT INTO shows (id, name, network, country, status, premiered, image, url,
@@ -278,7 +288,7 @@ def api_search():
     for item in results[:20]:
         show = summarise_show(item["show"])
         show["followed"] = show["id"] in followed
-        show["default_shift"] = default_shift(show["country"])
+        show["default_shift"] = default_shift(item["show"])
         out.append(show)
     return jsonify(out)
 
