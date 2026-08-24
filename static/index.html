@@ -10,7 +10,7 @@
 :root{
   --ink:#12141d; --panel:#1a1e2a; --edge:#2a3040; --edge-soft:#222736;
   --text:#e7e9f0; --dim:#8b93a8; --faint:#5c6479;
-  --uk:#f0b429; --us:#56b6d8; --unknown:#e0544a;
+  --uk:#f0b429; --us:#56b6d8; --unknown:#e0544a; --gb-broadcast:#4caf6d;
   --mono:ui-monospace,"SF Mono","Cascadia Mono","JetBrains Mono",Menlo,Consolas,monospace;
   --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   --r:5px;
@@ -58,7 +58,7 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 }
 .key{display:flex;align-items:center;gap:7px}
 .swatch{width:9px;height:9px;border-radius:2px;background:var(--unknown)}
-.swatch.uk{background:var(--uk)} .swatch.us{background:var(--us)}
+.swatch.uk{background:var(--gb-broadcast)} .swatch.us{background:var(--us)}
 .legend .shifted{color:var(--us)}
 
 /* ---------- month grid ---------- */
@@ -81,7 +81,7 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 }
 .cell.dim{background:#101219}
 .cell.dim .daynum{color:var(--faint)}
-.cell.today{background:#171a24;box-shadow:inset 3px 0 0 var(--uk)}
+.cell.today{background:#242a3c;box-shadow:inset 3px 0 0 var(--uk)}
 .daynum{font-family:var(--mono);font-size:13.5px;color:var(--dim);letter-spacing:.03em}
 .cell.today .daynum{color:var(--uk)}
 
@@ -92,7 +92,7 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
   font-size:13.5px;line-height:1.3;
 }
 .chip:hover{background:#242938}
-.chip.uk{border-left-color:var(--uk)}
+.chip.uk{border-left-color:var(--gb-broadcast)}
 .chip.us{border-left-color:var(--us)}
 .chip .title{display:block;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chip .meta{
