@@ -85,13 +85,21 @@ a missing bind mount can't empty your database.
 
 ## Run with Docker (linuxvm)
 
+The VM runs this repo as a git clone in `~/dev/tvcal`, the same place and pattern
+as the other self-hosted apps there. Deploy by pulling, not by copying a working
+tree over:
+
 ```bash
-cd /opt/tvcal
+git clone git@github.com:bearonatinybike/tvcal.git ~/dev/tvcal    # first time only
+cd ~/dev/tvcal
 cp .env.example .env       # set TVCAL_UID / TVCAL_GID from `id -u` / `id -g`
 mkdir -p data
 docker compose up -d --build
 docker compose logs -f
 ```
+
+`.env` and `data/` are gitignored, so they survive a `git pull` and are the only
+two things a fresh clone needs recreating.
 
 The compose file binds the container to `127.0.0.1:8087` only — nginx fronts it with TLS
 from the shared `linuxvm.bearonatinybike.com` cert lineage, same pattern as Nom De Plume and
