@@ -369,8 +369,8 @@ function render(start){
     grid.append(cell);
   }
 
-  // agenda: only days that actually have something, from today onward
-  const days = Object.keys(byDay).filter(k => k >= todayISO).sort();
+  // agenda: every day in the loaded range that has something, past included
+  const days = Object.keys(byDay).sort();
   for (const key of days){
     const wrap = document.createElement("div");
     wrap.className = "agenda-day" + (key === todayISO ? " today" : "");
