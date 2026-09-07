@@ -104,7 +104,13 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 /* ---------- agenda (narrow screens) ---------- */
 .agenda{padding:4px 16px 32px;display:none}
 .agenda-day{border-top:1px solid var(--edge-soft);padding:12px 0}
+.agenda-day.today{box-shadow:inset 3px 0 0 var(--uk);padding-left:10px;margin-left:-10px}
 .agenda-day.today .agenda-date{color:var(--uk)}
+.agenda-now{
+  scroll-margin-top:150px;margin:18px 0 4px;padding:4px 10px;border-radius:3px;
+  background:var(--uk);color:#1a1405;
+  font-family:var(--mono);font-size:11.5px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;
+}
 .agenda-date{
   font-family:var(--mono);font-size:12.5px;letter-spacing:.12em;text-transform:uppercase;
   color:var(--dim);margin-bottom:8px;
@@ -369,19 +375,36 @@ function render(start){
     grid.append(cell);
   }
 
-  // agenda: every day in the loaded range that has something, past included
+  // agenda: every day in the loaded range that has something, past included.
+  // A "Today" bar is dropped in at the right spot so it's findable after a scroll.
   const days = Object.keys(byDay).sort();
+  const endISO = iso(new Date(start.getFullYear(), start.getMonth(), start.getDate() + 41));
+  const todayInRange = todayISO >= iso(start) && todayISO <= endISO;
+  let marker = null;
+  const addMarker = () => {
+    marker = document.createElement("div");
+    marker.className = "agenda-now";
+    marker.textContent = "Today";
+    agenda.append(marker);
+  };
+
   for (const key of days){
+    if (todayInRange && !marker && key >= todayISO) addMarker();
     const wrap = document.createElement("div");
     wrap.className = "agenda-day" + (key === todayISO ? " today" : "");
     const label = document.createElement("div");
     label.className = "agenda-date";
     const d = new Date(key + "T00:00:00");
-    label.textContent = key === todayISO ? "Today" :
+    label.textContent =
       `${DAYS[(d.getDay()+6)%7]} ${d.getDate()} ${MONTHS[d.getMonth()].slice(0,3)}`;
     wrap.append(label);
     for (const e of groupDayEpisodes(byDay[key])) wrap.append(chip(e));
     agenda.append(wrap);
+  }
+  if (todayInRange && !marker) addMarker();
+
+  if (marker && agenda.offsetParent !== null){
+    requestAnimationFrame(() => marker.scrollIntoView({block: "start"}));
   }
 
   if (!episodes.length) checkEmpty();
