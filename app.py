@@ -18,7 +18,6 @@ import time
 import requests
 from flask import Flask, Response, jsonify, request, send_from_directory
 
-import contentlist
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("TVCAL_DB", os.path.join(BASE_DIR, "tvcal.db"))
@@ -166,15 +165,6 @@ def default_shift(show):
     return 1 if network_country_code(show) == "US" else 0
 
 
-def tvmaze_search_id(name):
-    """Best-matching TVmaze show id for a name, or None. Used by the list sync."""
-    try:
-        results = tvmaze_get("/search/shows", q=name)
-    except requests.RequestException:
-        return None
-    return results[0]["show"]["id"] if results else None
-
-
 # --------------------------------------------------------------------------
 # Sync
 # --------------------------------------------------------------------------
@@ -236,19 +226,6 @@ def sync_show(show_id, conn, set_shift=None):
     return conn.execute("SELECT * FROM shows WHERE id = ?", (show_id,)).fetchone()
 
 
-def run_list_sync():
-    """Reconcile ~/.content_list.json with the database."""
-    if not contentlist.ENABLED:
-        return None
-    try:
-        with db() as conn:
-            return contentlist.sync(conn, sync_show, tvmaze_search_id,
-                                    log=app.logger.info)
-    except Exception as exc:
-        app.logger.warning("content list sync failed: %s", exc)
-        return None
-
-
 def refresh_all():
     with db() as conn:
         ids = [r["id"] for r in conn.execute(
@@ -267,7 +244,6 @@ def refresh_loop():
     time.sleep(20)  # let the service settle before the first sweep
     while True:
         try:
-            run_list_sync()
             count = refresh_all()
             app.logger.info("refreshed %d shows", count)
         except Exception as exc:
@@ -333,7 +309,6 @@ def api_add_show():
             row = sync_show(int(show_id), conn)
     except requests.RequestException as exc:
         return jsonify({"error": f"TVmaze lookup failed: {exc}"}), 502
-    run_list_sync()
     return jsonify(dict(row)), 201
 
 
@@ -364,7 +339,6 @@ def api_remove_show(show_id):
         cur = conn.execute("DELETE FROM shows WHERE id = ?", (show_id,))
     if cur.rowcount == 0:
         return jsonify({"error": "show not found"}), 404
-    run_list_sync()
     return jsonify({"removed": show_id})
 
 
@@ -376,16 +350,6 @@ def api_refresh_show(show_id):
     except requests.RequestException as exc:
         return jsonify({"error": f"TVmaze lookup failed: {exc}"}), 502
     return jsonify(dict(row))
-
-
-@app.post("/api/sync-list")
-def api_sync_list():
-    if not contentlist.ENABLED:
-        return jsonify({"error": "content list sync is disabled"}), 400
-    result = run_list_sync()
-    if result is None:
-        return jsonify({"error": "sync failed, see logs"}), 500
-    return jsonify(result)
 
 
 @app.post("/api/refresh")
@@ -484,7 +448,8 @@ def static_files(filename):
 init_db()
 
 with db() as _conn:
-    _conn.executescript(contentlist.SYNC_SCHEMA)
+    # Left over from the retired ~/.content_list.json sync.
+    _conn.execute("DROP TABLE IF EXISTS synced_shows")
 
 if os.environ.get("TVCAL_AUTOREFRESH", "1") == "1":
     threading.Thread(target=refresh_loop, daemon=True).start()

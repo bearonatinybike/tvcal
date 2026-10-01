@@ -39,49 +39,16 @@ the real air date next to the calendar date.
 | DELETE | `/api/shows/<id>` | Remove a show and its episodes |
 | POST | `/api/shows/<id>/refresh` | Re-sync one show |
 | POST | `/api/refresh` | Re-sync everything in the background |
-| POST | `/api/sync-list` | Reconcile `~/.content_list.json` now |
 | GET | `/api/calendar?from=&to=` | Episodes by shifted date |
 | GET | `/calendar.ics` | Subscribable feed, −90 to +270 days |
 
-## Shared show list
+## Downloads
 
-tvcal and `get_content` keep the same list of shows, in `~/.content_list.json`.
-Adding a show in the tvcal UI writes it there; adding a line to the file by hand
-imports it into tvcal on the next sync. Removals stick on either side, because
-the set as of the last sync is recorded in a `synced_shows` table rather than
-inferred from the two lists.
-
-Entries are written back with the TVmaze id pinned:
-
-```json
-{
-  "shows": [
-    {"name": "Ghosts", "tvmaze_id": 30770},
-    {"name": "Hacks", "tvmaze_id": 41448}
-  ],
-  "last_downloaded": {"Ghosts": "S05E22"}
-}
-```
-
-Bare strings are still read, so an unmigrated file works untouched. `last_downloaded`
-and any other top-level keys are preserved. Writes go through a temp file in the
-same directory then `os.replace`, so `get_content` can never read a half-written list.
-
-Names TVmaze can't match are left in the file verbatim rather than dropped, which
-also means a network failure during a sync loses nothing.
-
-Apply `get_content-tvmaze-id.patch` to `get_content.py` so it reads the id form and
-looks shows up by id instead of re-running a name search each time:
-
-```bash
-cd ~/OneDrive/Dev/get_content && patch -p0 < /path/to/get_content-tvmaze-id.patch
-```
-
-Sync runs on startup, on every add and remove, on the refresh interval, and on
-`POST /api/sync-list`. Set `TVCAL_CONTENT_LIST_SYNC=0` to turn it off.
-
-If the file is missing or unreadable, tvcal exports its own list and never prunes -
-a missing bind mount can't empty your database.
+Each episode's popover has **Find downloads for S01E03** (a same-day batch from one
+season links to the whole season), which opens
+[getcontent](https://getcontent.bearonatinybike.com:8447) with the show's TVmaze id.
+getcontent also reads the followed shows from `GET /api/shows` for its weekly check.
+tvcal itself never searches for or downloads anything.
 
 ## Run with Docker (linuxvm)
 
@@ -90,7 +57,7 @@ as the other self-hosted apps there. Deploy by pulling, not by copying a working
 tree over:
 
 ```bash
-git clone git@github.com:bearonatinybike/tvcal.git ~/dev/tvcal    # first time only
+gh repo clone bearonatinybike/tvcal ~/dev/tvcal    # first time only
 cd ~/dev/tvcal
 cp .env.example .env       # set TVCAL_UID / TVCAL_GID from `id -u` / `id -g`
 mkdir -p data
@@ -114,14 +81,10 @@ Notes:
 - `TZ=Europe/London` is set in the compose file and `tzdata` is installed in the
   image. The calendar works in local dates, so a container left on UTC puts BST
   evening broadcasts on the wrong day.
-- The container runs as your uid, so the database and content list stay yours
+- The container runs as your uid, so the database stays yours
   rather than root's. Create `./data` before the first `up` or Docker will make
   it root-owned.
-- `$HOME` is mounted at `/hostdata` as a directory, not `.content_list.json` as a
-  single file. A single-file bind mount stops tracking the file after the first
-  atomic replace. Point `TVCAL_CONTENT_DIR` somewhere narrower if you'd rather not
-  mount all of `$HOME`.
-- Keep `--workers 1`. The refresh and sync threads live in the worker, so more
+- Keep `--workers 1`. The refresh thread lives in the worker, so more
   than one means duplicate sweeps against TVmaze.
 
 ## Install on the VM (systemd, no Docker)
@@ -130,7 +93,7 @@ Notes:
 sudo useradd --system --home /opt/tvcal --shell /usr/sbin/nologin tvcal
 sudo mkdir -p /opt/tvcal && sudo chown tvcal:tvcal /opt/tvcal
 
-sudo -u tvcal cp -r app.py contentlist.py static requirements.txt /opt/tvcal/
+sudo -u tvcal cp -r app.py static requirements.txt /opt/tvcal/
 sudo -u tvcal python3 -m venv /opt/tvcal/.venv
 sudo -u tvcal /opt/tvcal/.venv/bin/pip install -r /opt/tvcal/requirements.txt
 
@@ -152,8 +115,6 @@ Threads are fine.
 | `TVCAL_REFRESH_HOURS` | `12` | Background re-sync interval |
 | `TVCAL_AUTOREFRESH` | `1` | Set to `0` to disable the background thread |
 | `TVCAL_PORT` | `8087` | Only used by the dev server |
-| `TVCAL_CONTENT_LIST` | `~/.content_list.json` | Shared show list |
-| `TVCAL_CONTENT_LIST_SYNC` | `1` | Set to `0` to leave the file alone |
 | `TZ` | container default | Set to `Europe/London`; the calendar is date-based |
 
 ## Notes

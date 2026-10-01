@@ -274,6 +274,18 @@ function regionClass(e){
   if (e.country === "US") return "us";
   return "";
 }
+/* Episode and season searches open in getcontent (finds and queues downloads).
+   tvcal itself stays a calendar: this is only a link out. */
+const GETCONTENT_URL = "https://getcontent.bearonatinybike.com:8447/";
+function findLink(show, code, tvmazeId){
+  const a = document.createElement("a");
+  a.className = "out";
+  a.href = `${GETCONTENT_URL}?q=${encodeURIComponent(show + " " + code)}&tvmaze_id=${tvmazeId}`;
+  a.target = "_blank"; a.rel = "noopener";
+  a.textContent = `Find downloads for ${code}`;
+  return a;
+}
+
 function epCode(e){
   return (e.season && e.number) ? `S${String(e.season).padStart(2,"0")}E${String(e.number).padStart(2,"0")}` : "Special";
 }
@@ -470,6 +482,7 @@ function showDetail(e){
     a.textContent = "Open on TVmaze";
     box.append(a);
   }
+  if (e.season && e.number) box.append(findLink(e.show, epCode(e), e.show_id));
   document.body.append(scrim, box);
 }
 
@@ -516,6 +529,13 @@ function showGroupDetail(g){
     }
     li.append(wrap);
     list.append(li);
+  }
+  // A same-day batch from one season is usually a whole-season drop: search
+  // for the season, which offers a season pack first.
+  const seasons = new Set(g.episodes.map(e => e.season).filter(Boolean));
+  if (seasons.size === 1){
+    const season = [...seasons][0];
+    box.append(findLink(g.show, `S${String(season).padStart(2,"0")}`, g.episodes[0].show_id));
   }
   document.body.append(scrim, box);
 }

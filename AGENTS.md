@@ -14,7 +14,6 @@ Flask + SQLite + vanilla JS. No build step, no frontend framework, no ORM.
 
 ```
 app.py              Flask app, TVmaze client, SQLite schema, API, ICS feed
-contentlist.py      Two-way sync with get_content's ~/.content_list.json
 static/index.html   Whole frontend — inline CSS and JS, one file
 Dockerfile          python:3.12-slim, gunicorn
 docker-compose.yml  The deploy on linuxvm
@@ -23,35 +22,32 @@ tvcal.service       systemd alternative if Docker is dropped
 
 ## Related projects
 
-Both live in `~/OneDrive/Dev/`. Start sessions with:
+Development happens here, in `~/dev/tvcal` on linuxvm (there is no Mac copy). Pushes
+go over HTTPS with linuxvm's `gh` login (repo-local
+`credential.https://github.com.helper '!gh auth git-credential'`): linuxvm's SSH key
+belongs to a different GitHub account.
 
-```bash
-cd ~/OneDrive/Dev/tvcal
-claude --add-dir ../get_content ../organise_media
-```
-
-- `get_content` — CLI that finds episodes and hands them to Transmission. Shares
-  `~/.content_list.json` with tvcal. Also uses TVmaze. Has separate Mac and Linux
-  variants; only one is on GitHub.
+- `getcontent` (`~/dev/getcontent`) — web app that finds and queues downloads. Reads
+  the followed shows from tvcal's `GET /api/shows` (`id` = TVmaze id, `name`,
+  `archived`); keep those fields stable. tvcal's episode popovers link to it.
 - `organise_media` — bash scripts that sort downloads into `~/media/{Movies,TV}`.
   Uses TVmaze and OMDb. Keeps `~/.config/organise_media/title_corrections.tsv`.
 
 ## Rules
 
 - **Do not add acquisition features to tvcal.** It is a calendar. Downloading,
-  torrent search and Transmission stay in `get_content`. The shared surface between
-  them is the show list and title metadata, nothing else.
-- **Keep `--workers 1`.** The refresh and content-list sync threads live inside the
-  gunicorn worker. More workers means duplicate sweeps against TVmaze.
+  torrent search and Transmission stay in `getcontent`. tvcal only links out to it
+  ("Find downloads" in the episode popovers) and serves the show list through
+  `/api/shows`.
+- **Keep `--workers 1`.** The refresh thread lives inside the gunicorn worker. More
+  workers means duplicate sweeps against TVmaze.
 - **TVmaze is rate limited** to about 20 requests per 10 seconds per IP, shared
-  across tvcal and `get_content` on the same host. Use `?embed=episodes` rather than
+  across tvcal and `getcontent` on the same host. Use `?embed=episodes` rather than
   separate show and episode calls. Set a real User-Agent; TVmaze asks for one.
 - **Data is CC BY-SA.** The attribution line in the page footer stays.
 - **The calendar works in dates, not timestamps.** `TZ` must be set. On UTC, BST
   evening broadcasts land on the wrong day — which is exactly the boundary the
   whole +1 rule depends on.
-- **Never let a missing content list prune the database.** `read_file()` returns
-  `None` for unreadable, which is different from an empty list. Keep that distinction.
 - No `localStorage` or `sessionStorage` in the frontend.
 - British spelling in UI copy and comments.
 
@@ -61,7 +57,6 @@ claude --add-dir ../get_content ../organise_media
 git -C ~/dev/tvcal pull           # on linuxvm, before deploying
 docker compose up -d --build      # deploy (from the checkout, ~/dev/tvcal)
 docker compose logs -f tvcal
-curl -X POST localhost:8087/api/sync-list      # reconcile the show list now
 curl -X POST localhost:8087/api/refresh        # re-pull episodes for every show
 ```
 
@@ -78,23 +73,11 @@ on a US evening schedule either, so the same "no shift" default applies. The UI 
 per-show override for anything the default gets wrong. Shifted entries carry a `+1`
 badge and the episode popover shows the real air date, so the shift is never silent.
 
-**The content-list sync records state.** A `synced_shows` table holds the set as of
-the last sync. Without it, a union re-adds anything deleted on either side. With it,
-`(file | db) - ((last - file) | (last - db))` makes removals stick both ways.
-
-**Writes to the content list are atomic.** Temp file in the same directory, then
-`os.replace`, so `get_content` can never read a half-written list. This is why the
-compose file mounts a *directory* at `/hostdata` — a single-file bind mount stops
-tracking the file after the first inode swap.
-
-**The canonical file lives on both machines, kept in step by `get_content` itself.**
-`~/.content_list.json` exists independently on the Mac and on `linuxvm` (tvcal only ever
-sees `linuxvm`'s copy). Rather than a background sync daemon on either side,
-`get_content.py`'s list-driven mode (`sync_content_list_with_peer()`, both machines run an
-identical copy of the script) does two one-directional `rsync -u` passes with its peer
-before reading and after writing — whichever side has the newer mtime wins, propagated
-both ways, no daemon required. tvcal's own writes (add/remove in the UI) only reach the
-Mac the next time `get_content` runs there.
+**The database is the show list.** Until 2026-10-01 tvcal also kept a two-way sync with
+`~/.content_list.json` for the old `get_content` CLI; that file and the sync are gone
+(the leftover `synced_shows` table is dropped at startup). `data/tvcal.db` is now the
+only copy of the followed shows, so the backup snapshots it (`sqlite3 .backup` →
+`data/tvcal.snapshot.db`, since the live file is WAL-mode).
 
 ## Status
 
@@ -126,8 +109,7 @@ the per-show override ticked manually. If more HBO Max (or similarly US-only,
 no-country) shows get added, worth hardcoding a short list of known US-only streaming
 networks as a second check, rather than relying on TVmaze's country field alone.
 
-**Not done:** no tests in the repo; no `/api/sync-list` button in the Shows panel
-(endpoint only); no local caching of TVmaze poster images; the ICS feed is
+**Not done:** no tests in the repo; no local caching of TVmaze poster images; the ICS feed is
 unauthenticated (fine on a LAN, worth revisiting if it's ever exposed); tvcal could
 populate `title_corrections.tsv` from its own TVmaze names/premiere years once the
 `db_save` fix has proven itself, so `organise_media` stops prompting for shows already
